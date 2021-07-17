@@ -33,7 +33,7 @@
 |                       | Interlock |
 
 
-### Compatability
+### Compatibility
  |  Hub                                   | Compatible                                     | Amazon Alexa | Google Assistant | Yandex Alisa |
  |----------------------------------------|------------------------------------------------|--------------|------------------|--------------|
  | Aeotec Smart Home Hub V3 (SmartThings) | Requires installation of custom device handler | Yes          | No data          | Not supported|
