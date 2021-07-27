@@ -144,10 +144,16 @@ Interlock modification completion code
 
 ** Atributes **
 
-| Cluster | Attribute | Description  |
-|---------|-----------|--------------|
-| 0x0000  |           |              |
-| 0x0001  | 0x0000    | Voltage ??   |
-| 0x0006  | 0x0000    | On/Off state for given  EP |
-| 0x000C  | 0x0055    | Power (float 4 bytes) |
-| 0x0010  | 0xFF06    | Interlock    |
+| Cluster | Attribute | Description                         | Comments     |
+|---------|-----------|-------------------------------------|--------------|
+| 0x0000  | 0x0000    | ZCLVersion                          |              |
+|         | 0x0001    | Application Version                 |              |
+|         | 0x0002    | Stack Version                       |              |
+|         | 0x0003    | HW Version                          |              |
+|         | 0x0006    | Date Code                           | Hex string   |
+| 0x0001  | 0x0000    | Voltage (EP=1)                      | Not reported |
+| 0x0002  | 0x0000    | Temperature                         |              |
+| 0x0006  | 0x0000    | On/Off state for given  EP          |              |
+| 0x000C  | 0x0055    | Power (float 4 bytes)               |              |
+| 0x0010  | 0xFF06    | Interlock                           |              |
+| 0x0B04  | 0x0000    | Electrical Measurement - Basic info |              |

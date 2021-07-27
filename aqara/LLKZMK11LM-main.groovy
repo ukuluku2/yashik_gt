@@ -131,8 +131,11 @@ metadata {
 	
 	preferences {
 		getBoolInput("debugOutput", "Enable Debug Logging", true)
-		input name: "tempUnitDisplayed", type: "enum", title: "Displayed Temperature Unit", description: "", defaultValue: "1", required: true, multiple: false, options:[["1":"°C (Celsius)"], ["2":"°F (Fahrenheit)"]]
+		input name: "tempUnitDisplayed", type: "enum", title: "Displayed Temperature Unit", description: "", defaultValue: "1", required: true, multiple: false, options:[["1":"C (Celsius)"], ["2":"F (Fahrenheit)"]]
+		input name: "temperatureOffset", type: "decimal", title: "Temperature offset", defaultValue: 0, range: "-15..10", description: "Temperature calibration value", required: true, displayDuringSetup:false
 		input name: "interlock", type: "bool", title: "Interlock", description: "Switches off relay if another is switched on", defaultValue: false, required: true
+	
+		input name: "refreshActions", type: "bool", title: "Refresh info", description: "Sends queries to the device", defaultValue: false, required: false, displayDuringSetup:false
 	}
 
 	tiles(scale: 2) {
@@ -179,7 +182,7 @@ metadata {
 		}
 
 		valueTile("temperature", "device.temperature", width: 2, height: 2) {
-			state "temperature", label:'${currentValue}', unit:'°C', icon:"st.Weather.weather2"
+			state "temperature", label:'${currentValue}', unit:'C', icon:"st.Weather.weather2"
 		}
 				
 		
@@ -224,6 +227,7 @@ def installed() {
 	state.children          = [ "off", "off" ]
 	state.info = [ : ]
 	state.temperature = 0
+	state.current = 0
 	state.interlock = 3
 	sendEvent( name: 'power',  		value: 0.0, unit: 'W',   displayed: true )
 	sendEvent( name: 'energy', 		value: 0.0, unit: 'kWh', displayed: true )
@@ -235,11 +239,12 @@ def installed() {
 	createChildDevices()
 }
 
-def configure() {	
+def configure() {
 	logDebug "configure()... settings=${settings} childDevices=${childDevices}"
 	
 	state.info = [ : ]
 	state.interlock = 3
+	state.temperature = 0
 	sendEvent( name: 'interlock', value: getInterlockState(),  displayed: true )
 	updateHealthCheckInterval()
 
@@ -252,26 +257,16 @@ def configure() {
 	 
 	def cmds = []
 	cmds += 	
-			zigbee.configureReporting(0x000C, 0x0055, 0x39, 1, 10, 1, [destEndpoint: 0, mfgCode: 0x115F]) +
 			zigbee.configureReporting(0x000C, 0x0055, 0x39, 1, 10, 1, [destEndpoint: 1, mfgCode: 0x115F]) +
-			zigbee.configureReporting(0x000C, 0x0055, 0x39, 1, 10, 1, [destEndpoint: 2, mfgCode: 0x115F]) +
-			zigbee.configureReporting(0x000C, 0x0055, 0x39, 1, 10, 1, [destEndpoint: 3, mfgCode: 0x115F]) +
 			zigbee.configureReporting(0x0B04, 0x050B, 0x29, 1, 10, 1, [destEndpoint: 1, mfgCode: 0x115F]) +
-			zigbee.readAttribute(0x0000, 0x0000, [destEndpoint: 0x01]) +
-			zigbee.readAttribute(0x0000, 0x0001, [destEndpoint: 0x01]) +
-			zigbee.readAttribute(0x0000, 0x0002, [destEndpoint: 0x01]) +
-			zigbee.readAttribute(0x0000, 0x0003, [destEndpoint: 0x01]) +
-			zigbee.readAttribute(0x0000, 0x0006, [destEndpoint: 0x01]) +
-			zigbee.readAttribute(0x000C, 0x0055, [destEndpoint: 0x01]) +
-			zigbee.readAttribute(0x0010, 0xFF06, [destEndpoint: 0x01, mfgCode: 0x115F]) +
+			zigbee.readAttribute(0x0000, 0x0000, [destEndpoint: 0x01]) + // ZCLVersion
+			zigbee.readAttribute(0x0000, 0x0001, [destEndpoint: 0x01]) + // ApplicationVersion
+			zigbee.readAttribute(0x0000, 0x0002, [destEndpoint: 0x01]) + // StackVersion
+			zigbee.readAttribute(0x0000, 0x0003, [destEndpoint: 0x01]) + // HWVersion
+			zigbee.readAttribute(0x0000, 0x0006, [destEndpoint: 0x01]) + // DateCode
+//			zigbee.readAttribute(0x000C, 0x0055, [destEndpoint: 0x01]) + // Power meter - will be called by refresh
+//			zigbee.readAttribute(0x0010, 0xFF06, [destEndpoint: 0x01, mfgCode: 0x115F]) + will be called by refresh
 			zigbee.readAttribute(0x0B04, 0x0000, [destEndpoint: 0x01]) 
-			/*
-			+
-			zigbee.readAttribute(0x0B04, 0x050B, [destEndpoint: 0x00, mfgCode: 0x115F]) +
-			zigbee.readAttribute(0x0B04, 0x050B, [destEndpoint: 0x01, mfgCode: 0x115F]) +
-			zigbee.readAttribute(0x0B04, 0x050B, [destEndpoint: 0x02]) +
-			zigbee.readAttribute(0x0B04, 0x050B, [destEndpoint: 0x03]) 
-*/
 			
 	
 	def actions = []
@@ -286,29 +281,47 @@ def configure() {
 
 def updated() {	
 	logDebug "updated()... device=${device} settings=${settings} temp=" + getTempUnits()
+
+	try {
+
+		if (settings?.refreshActions == true)
+		{
+			device.updateSetting('refreshActions', false)
+			refreshAction()
+			return
+		}
+
+		if ( state.temperature != null ) {
+			handleSetTemperatureEvent(state?.temperature)
+		}
+
+		def cmds = []
+
+		if ( getInterlockConfig() != state.interlock )
+		{
+			logDebug "updated: changing interlock state to " + getInterlockConfig() + " hex=" + zigbee.convertToHexString(getInterlockConfig(),2)
 	
-	sendEvent( name: 'temperature', value: getTemperature(state.temperature), unit: getTempUnits(),   displayed: true )
-	
-	def cmds = []
-	
-	if ( getInterlockConfig() != getInterlockState() )
-	{
-		logDebug "updated: changing interlock state to " + getInterlockConfig() + " hex=" + zigbee.convertToHexString(getInterlockConfig(),2)
+			cmds += zigbee.writeAttribute(0x0010, 0xFF06, 0x10, zigbee.convertToHexString(getInterlockConfig(),2), [mfgCode: 0x115F] )
+		}
+
+		if (!isDuplicateCommand(state.lastUpdated, 3000)) {
+			state.lastUpdated = new Date().time
 			
-		cmds += zigbee.writeAttribute(0x0010, 0xFF06, 0x10, zigbee.convertToHexString(getInterlockConfig(),2), [mfgCode: 0x115F] )
-	}
-	
-	if (!isDuplicateCommand(state.lastUpdated, 3000)) {
-		state.lastUpdated = new Date().time
+			if (childDevices?.size() != 2)	createChildDevices()
+		}
+
+		cmds += refresh()
 		
-		if (childDevices?.size() != 2)	createChildDevices()		
+		def actions = []
+		cmds?.each {
+			actions << new physicalgraph.device.HubAction(it)
+		}
+
+		sendHubCommand(actions,250)
 	}
-	
-	def actions = []
-	cmds?.each {
-		actions << new physicalgraph.device.HubAction(it)
+	catch (ex) {
+		logError "updated: Exeption: $ex  "
 	}
-	sendHubCommand(actions,250)	
 }
 
 def ping() {
@@ -324,9 +337,9 @@ def parse(String description) {
 	def result = []
 	try {
 		def descMap = zigbee.parseDescriptionAsMap(description)
-		logDebug "parse(): description is '$description'  descMap is $descMap"
+		logInfo "parse(): description is '$description'  descMap is $descMap"
 		
-		def command  = descMap.command
+		def command  = descMap?.command
 
 		if (description?.startsWith("read attr -")) {
 			def endpoint = descMap?.endpoint as int
@@ -368,29 +381,44 @@ def parse(String description) {
 						def value = Integer.parseInt(descMap.value, 16)
 						if (value > 127)	value = value - 256
 						logDebug "parse: Temperature: endpoint=${endpoint} ${descMap.value}  value=${value}C"
+
+						handleSetTemperatureEvent(value)
+					} else {
+						state.info["Cluster 0x0002 " + descMap?.attrInt] = descMap.value
 					}
-					state.info["Cluster 0x0002 " + descMap?.attrInt] = descMap.value
 					
 				break
 
 				case zigbee.ONOFF_CLUSTER: // 0x0006
+					logDebug "parse: ON/OFF endpoint=${endpoint} value=${descMap.value}"
 					handleSwitchClusterEvent(endpoint, descMap?.attrInt, command, descMap.value)
 				break
 
-				case 0x000C: // Analog input (consumption) Power meter 
-					if (descMap?.attrInt == 0x0055) { 
-						// 0x0055 Present value, 0x001C Description, 0x0041 MaxPresentValue, 
-						// 0x0045 MinPresentValue, 0x0051 OutOfService, 0x006A Resolution 
-						def value = Float.intBitsToFloat(Long.parseLong(descMap.value, 16).intValue())
-						logDebug "parse: Analog input: power: endpoint=${endpoint} ${descMap.value}  value=${value}W"
-						state.info.AnalogInput = value +"W"
-						sendEvent(name: "power", value: value, unit: 'W', displayed: true, isStateChange: true, descriptionText: "Cluster 0x000C, Attr: 0x0055")
+				case 0x000C: // Analog input (consumption) Power meter
+					switch (descMap?.attrInt)
+					{
+						case 0x0041:
+							def value = Float.intBitsToFloat(Long.parseLong(descMap.value, 16).intValue())
+							logDebug "parse: Analog input: max present value: endpoint=${endpoint} ${descMap.value}  value=${value}W"
+							state.info.MaxPresentValue = value
+						break
+					    case 0x0055: 
+							// 0x0055 Present value, 0x001C Description, 0x0041 MaxPresentValue, 
+							// 0x0045 MinPresentValue, 0x0051 OutOfService, 0x006A Resolution 
+							def value = Float.intBitsToFloat(Long.parseLong(descMap.value, 16).intValue())
+							logDebug "parse: Analog input: power: endpoint=${endpoint} ${descMap.value}  value=${value}W"
+							sendEvent(name: "power", value: value, unit: 'W', displayed: true, isStateChange: true, descriptionText: "Cluster 0x000C, Attr: 0x0055")						
+						break
+
+						case 0x001C:
+							state.info.AnalogInputDescription = hexStringToString(descMap.value)
+						break
+
+						default:
+							logInfo "Analog input: Unknown attribute=${descMap?.attrInt}   ${descMap.value}"
+							state.info["Cluster 0x000C " + descMap?.attrInt] = descMap.value
 					}
-					else {
-						logTrace "Analog input: Unknown attribute=${descMap?.attrInt}   ${descMap.value}"
-						state.info["Cluster 0x000C " + descMap?.attrInt] = descMap.value
-					}
-				break
+				break // 0x000C Analog input cluster
 				
 				case 0x0010: // Binary output
 					if (descMap?.attrInt == 0xFF06) {
@@ -413,7 +441,7 @@ def parse(String description) {
 				break
 				default:
 					state.info["Cluster " + descMap?.clusterId + "  " + descMap?.attrInt] = descMap.value
-					logTrace "Unknown cluster ID:  ${descMap.clusterInt}"
+					logInfo "Unknown cluster ID:  ${descMap.clusterInt}"
 			}
 			String info = state.info
 			sendEvent(name: "Info", value: info)
@@ -426,25 +454,37 @@ def parse(String description) {
 				break
 
 				case zigbee.ONOFF_CLUSTER: // 0x0006
+					if ( descMap?.commandInt == 1 )
+					{
+						// This is the response to 
+						// readAttribute(zigbee.ONOFF_CLUSTER, 0x0000)
+						// Data contains 5 bytes: 2bytes attribute, 1b result, 1 bytes encoding, 1 byte value
+						handleSwitchClusterEvent(endpoint, 0x0000, command, descMap.value)
+					} else if ( descMapcommandInt == 0xB ) {
+						// Data contains 2 bytes, the first one contains the status of EP
+						handleSwitchClusterEvent(endpoint, 0x0000, command, descMap.data[0])
+					}
 					// descMap.attrInt is not set here, use zero
-					handleSwitchClusterEvent(endpoint, 0x0000, command, descMap.data[0])
+					/*
 					descMap.additionalAttrs?.each {	
 						//zigbee.convertHexToInt(descMap.value)
 						handleSwitchClusterEvent ( endpoint, it?.attrInt, command, it.value)
-					}								
+					}
+					*/								
 				break
 				
 				case 0x000C:
-				// Looks like Power reporting. No attribute is sent
+				// Looks like Power reporting. No attribute is set in descMap
 				
 				break
 				
 				case 0x0010:
-					log.info "Cluster 0x0010 Binary output " + descMap.data
-					// Read the new value		
+					log.info "Cluster 0x0010 Binary output " + descMap.data + " interlock modification completion"
+					// It seems like catchall provides the status of the previous write (set) operation, instead of the new value
+					// So, we just issuing the read request to retrieve the new value
+					//		state.interlock = zigbee.convertHexToInt( descMap.data[0] )
+					//		sendEvent( name: 'interlock', value: getInterlockState(),  displayed: true )
 					sendHubCommand(zigbee.readAttribute(0x0010, 0xFF06, [destEndpoint: 0x01, mfgCode: 0x115F]).collect { new physicalgraph.device.HubAction(it) }, 250)
-					//state.interlock = zigbee.convertHexToInt( descMap.data[0] )
-					//sendEvent( name: 'interlock', value: getInterlockState(),  displayed: true )					
 				break
 				
 				case 0x0B04:
@@ -461,13 +501,14 @@ def parse(String description) {
 			
 		}
 		else {
-			logTrace "--unknown event()"
+			logInfo "--unknown event()"
 		}
 		
 	}
 	catch (ex) {
-		logTrace "Exeption: $ex  " + ex.dump()
+		logError "parse: Exeption: $ex  "
 	}
+
 	def now = new Date().format("dd-MM-yyyy HH:mm:ss", location.timeZone)
 	sendEvent(name: "lastCheckin", value: now, displayed: false)
 	executeSendEvent(findChildByEndPoint(1), createEventMap("lastCheckin", now))
@@ -502,12 +543,83 @@ def sw2Off() { childOff(getChildDeviceNetworkId(2)) }
 def refresh() {
 	logDebug "refresh()..."	
 	// TODO test it
-	def Cmds = zigbee.readAttribute(0x0001, 0x0000, [destEndpoint: 0x01]) +		// voltage
-			   zigbee.readAttribute(0x0002, 0x0000, [destEndpoint: 0x01]) +		// temperature
-			   zigbee.readAttribute(zigbee.ONOFF_CLUSTER, 0x0000, [destEndpoint: 0x01]) +		// switch 1 state
-			   zigbee.readAttribute(zigbee.ONOFF_CLUSTER, 0x0000, [destEndpoint: 0x02]) +		// switch 2 state
-			   zigbee.readAttribute(0x000C, 0x0055, [destEndpoint: 0x03])		// power
-	return Cmds
+	def Cmds = 
+                zigbee.readAttribute(0x0002, 0x0000, [destEndpoint: 0x01]) +		            // temperature
+                zigbee.readAttribute(zigbee.ONOFF_CLUSTER, 0x0000, [destEndpoint: 0x01]) +		// switch 1 state
+                zigbee.readAttribute(zigbee.ONOFF_CLUSTER, 0x0000, [destEndpoint: 0x02]) +		// switch 2 state
+                zigbee.readAttribute(0x000C, 0x0055, [destEndpoint: 0x01]) +                     // Analog input (consumption) Power meter 
+                zigbee.readAttribute(0x0010, 0xFF06, [destEndpoint: 0x01, mfgCode: 0x115F])     // interlock
+ 	return Cmds
+}
+
+
+def refreshAction() {
+
+	logDebug "refreshActions()..."	
+	
+	def cmds = refresh()
+		
+	def actions = []
+	cmds?.each {
+		actions << new physicalgraph.device.HubAction(it)
+	}
+
+	sendHubCommand(actions,250)
+}
+
+// This is used for tests
+def refreshAction2() {
+	logDebug "refreshActions()..."	
+	def cmds = 
+				zigbee.readAttribute(zigbee.BASIC_CLUSTER, 0xFF01, [destEndpoint: 0x01, mfgCode: 0x115F]) +		
+				zigbee.readAttribute(0x0001, 0x0000, [destEndpoint: 0x01]) +		// voltage
+				zigbee.readAttribute(0x0001, 0x0000, [destEndpoint: 0x02]) +
+//			   	zigbee.readAttribute(0x0001, 0x0000, [destEndpoint: 0x01, mfgCode: 0x115F]) +
+//			   	zigbee.readAttribute(0x0001, 0x0000, [destEndpoint: 0x02, mfgCode: 0x115F]) +
+//				zigbee.readAttribute(0x0001, 0x0001, [destEndpoint: 0x01]) +		// mains frequency
+//				zigbee.readAttribute(0x0001, 0x0001, [destEndpoint: 0x02]) +
+//			   	zigbee.readAttribute(0x0001, 0x0001, [destEndpoint: 0x01, mfgCode: 0x115F]) +
+//			   	zigbee.readAttribute(0x0001, 0x0001, [destEndpoint: 0x02, mfgCode: 0x115F])
+				zigbee.readAttribute(0x0002, 0x0000, [destEndpoint: 0x01]) +	
+//				zigbee.readAttribute(0x000C, 0x0055, [destEndpoint: 0x00]) + 
+				zigbee.readAttribute(0x000C, 0x0055, [destEndpoint: 0x01]) + 
+//				zigbee.readAttribute(0x000C, 0x0055, [destEndpoint: 0x02]) + 
+//				zigbee.readAttribute(0x000C, 0x0055, [destEndpoint: 0x01, mfgCode: 0x115F]) + 
+//				zigbee.readAttribute(0x000C, 0x0055, [destEndpoint: 0x02, mfgCode: 0x115F]) + 
+//				zigbee.readAttribute(0x000C, 0x0055, [destEndpoint: 0x03, mfgCode: 0x115F]) 
+				zigbee.readAttribute(0x000C, 0x001C, [destEndpoint: 0x01]) + // Description
+				zigbee.readAttribute(0x000C, 0x0041, [destEndpoint: 0x01]) + // MaxPresentValue
+//				zigbee.readAttribute(0x000C, 0x0045, [destEndpoint: 0x01]) + // MinPresentValue
+//				zigbee.readAttribute(0x000C, 0x006A, [destEndpoint: 0x01]) + // Resolution
+				zigbee.readAttribute(0x0010, 0xFF06, [destEndpoint: 0x01, mfgCode: 0x115F]) + // Interlock mode
+				zigbee.readAttribute(0x0B04, 0x0000, [destEndpoint: 0x01]) +
+//				zigbee.readAttribute(0x0B04, 0x0005, [destEndpoint: 0x01]) + // AC (Single Phase or Phase A) Measurements
+//				zigbee.readAttribute(0x0B04, 0x0006, [destEndpoint: 0x01]) + // AC Formatting
+				zigbee.readAttribute(0x0B04, 0x0300, [destEndpoint: 0x01]) + // ACFrequency
+				zigbee.readAttribute(0x0B04, 0x0304, [destEndpoint: 0x01]) + // TotalActivePower
+//				zigbee.readAttribute(0x0B04, 0x0305, [destEndpoint: 0x01]) +
+//				zigbee.readAttribute(0x0B04, 0x0306, [destEndpoint: 0x01]) +
+//				zigbee.readAttribute(0x0B04, 0x0400, [destEndpoint: 0x01]) +
+//				zigbee.readAttribute(0x0B04, 0x0402, [destEndpoint: 0x01]) +
+//				zigbee.readAttribute(0x0B04, 0x0403, [destEndpoint: 0x01]) +
+//				zigbee.readAttribute(0x0B04, 0x0501, [destEndpoint: 0x01]) +
+				zigbee.readAttribute(0x0B04, 0x0505, [destEndpoint: 0x01]) + // RMSVoltage
+//				zigbee.readAttribute(0x0B04, 0x0506, [destEndpoint: 0x01]) +
+				zigbee.readAttribute(0x0B04, 0x0508, [destEndpoint: 0x01]) + // RMSCurrent
+				zigbee.readAttribute(0x0B04, 0x050B, [destEndpoint: 0x01]) + // ActivePower
+				zigbee.readAttribute(0x0B04, 0x050B, [destEndpoint: 0x01, mfgCode: 0x115F]) +
+//				zigbee.readAttribute(0x0B04, 0x050E, [destEndpoint: 0x01]) +
+//				zigbee.readAttribute(0x0B04, 0x050F, [destEndpoint: 0x01]) +
+				zigbee.readAttribute(0x0B04, 0x0510, [destEndpoint: 0x01])  // PowerFactor
+//				zigbee.readAttribute(0x0B04, 0x0600, [destEndpoint: 0x01]) +
+//				zigbee.readAttribute(0x0B04, 0x0601, [destEndpoint: 0x01]) 
+
+	def actions = []
+	cmds?.each {
+		actions << new physicalgraph.device.HubAction(it)
+	}
+
+	sendHubCommand(actions, 2000)
 }
 
 
@@ -539,7 +651,7 @@ def childOn(dni) {
 		sendHubCommand(actions)	
 	}
 	else {
-		logTrace "childOn failed: Invalid endpoint: dni=${dni} endPoint=(${endPoint})"
+		logError "childOn failed: Invalid endpoint: dni=${dni} endPoint=(${endPoint})"
 	}
 }
 
@@ -556,7 +668,7 @@ def childOff(dni) {
 		sendHubCommand(actions)	
 	}
 	else {
-		logTrace "childOn failed: Invalid endpoint: dni=${dni} endPoint=(${endPoint})"
+		logError "childOn failed: Invalid endpoint: dni=${dni} endPoint=(${endPoint})"
 	}
 }
 
@@ -581,7 +693,7 @@ def childRefresh(dni) {
 
 
 /* 
- *  Helpers
+ *  Children Helpers
  */
 
 private createChildDevices() {
@@ -609,59 +721,33 @@ private addChildSwitch(dni, endPoint) {
 		)
 		//newChild.sendEvent(name:"switch", value:"off")
 	} catch(e) {
-	   logTrace "addChildSwitch failed: ${e}"
+	   logError "addChildSwitch failed: ${e}"
 	}
 	
 }
 
+private findChildByEndPoint(endPoint) {
+	def dni = "${getChildDeviceNetworkId(endPoint)}"
+	return findChildByDeviceNetworkId(dni)
+}
 
-private updateHealthCheckInterval() {
-	logDebug "updateHealthCheckInterval().."
-	
-	// Device wakes up every 5 min, this interval allows us to miss one wakeup notification before marking offline
-	def minReportingInterval = (1 * 60 * 5)
-	
-	if (state.minReportingInterval != minReportingInterval) {
-		state.minReportingInterval = minReportingInterval
-		logDebug "Configured health checkInterval when updated()"
-		
-		// Set the Health Check interval so that it can be skipped twice plus 2 minutes.
-		def checkInterval = ((minReportingInterval * 2) + (2 * 60))
-		sendEvent(name: "checkInterval", value: checkInterval, displayed: false, data: [protocol: "zigbee", hubHardwareId: device.hub.hardwareID])
-	}
+private findChildByDeviceNetworkId(dni) {
+	return childDevices?.find { it.deviceNetworkId == dni }
+}
+
+private getEndPoint(childDeviceNetworkId) {
+	return safeToInt("${childDeviceNetworkId}".reverse().take(1))
+}
+
+private getChildDeviceNetworkId(endPoint) {
+	return "${device.deviceNetworkId}-SW${endPoint}"
 }
 
 
 
-
-def handleSwitchClusterEvent(src, attribute, command, value) {
-
-	logDebug "handleSwitchClusterEvent(): src=${src} attribute=${attribute} value=${value} " + value.dump() 
-	int endPoint = src as int
-	List result = []
-	
-	switch ( attribute )
-	{
-		case 0x0000: // On/Off
-			int index = endPoint - 1
-			state.children[index] = (value == "01") ? "on" : "off"
-			executeSendEvent(findChildByEndPoint(endPoint), createEventMap("switch", state.children[index]))
-			executeSendEvent(null, createEventMap("sw${endPoint}Switch", state.children[index]))
-			executeSendEvent(null, createEventMap("switch", ((state.children[0]  == "on") || (state.children[1] == "on")) ? "on" : "off"))
-		break
-		
-		case 0x4000: // GlobalSceneControl
-		break
-		
-		case 0x4001: // OnTime
-		break
-		
-		case 0x4002: // OffWaitTime
-		break
-	}
-//	logDebug "handleSwitchClusterEvent done: children=" + state.children.dump() + "  result: " + result.dump()
-	return result
-}
+/* 
+ *  Helpers
+ */
 
 def getDataTypeLength(type) {
 	int len = 0
@@ -811,9 +897,8 @@ def processRecord(record_type, data_type, record) {
 	
 	switch (record_type) {
 		case 0x03: // temperature °C, type 0x28
-			record.name = "temperature"
-			state.temperature = record.value
-			sendEvent( name: record.name, value: getTemperature(state.temperature), unit: getTempUnits(),   displayed: true )
+			record.name = 'temperature'
+			handleSetTemperatureEvent( record.value )
 		break
 		
 		//case 0x05:   // ?  RSSI dB 	0x021 (UINT16)
@@ -830,12 +915,12 @@ def processRecord(record_type, data_type, record) {
 		//break
 		
 		case Key_SWITCH_1():
-			record.name = "switch"
+			record.name = 'switch'
 			handleSwitchClusterEvent(1, 0x0000, 0, record.value)
 		break
 		
 		case Key_SWITCH_2():
-			record.name = "switch"
+			record.name = 'switch'
 			handleSwitchClusterEvent(2, 0x0000, 0, record.value)
 		break
 		
@@ -877,6 +962,7 @@ def processRecord(record_type, data_type, record) {
 }
 
 
+
 def handleBasicClusterEvent(endpoint, attribute, command, descMap) {
 	
 	logDebug "handleBasicClusterEvent(): endpoint=${endpoint} attribute=${attribute} command=${command} "
@@ -892,52 +978,94 @@ def handleBasicClusterEvent(endpoint, attribute, command, descMap) {
 	{
 		case 0xFF01: //
 		
-		try {
-			int i = 4
-			while ( (i+2) < descMap.data.size() ) {
-				
-				curr = null
-				int j = i
-				int event_type  = zigbee.convertHexToInt(descMap.data[i++])
-				int data_type	= zigbee.convertHexToInt(descMap.data[i++])
-							
-				int data_len 	= getDataTypeLength(data_type)
+			try {
+				int i = 4
+				while ( (i+2) < descMap.data.size() ) {
 
-				def event_data = descMap.data[i..i+data_len-1]
-				i += data_len
-				
-				//logDebug "handleBasicClusterEvent process record=${j}..${i} record=0x" + descMap.data[j] + " data_type=0x" + descMap.data[j+1]
-												
-				Map record = [:]
-				record.first = j
-				record.last  = i
-				record.event_type = descMap.data[j]   // event_type
-				record.data_type  = descMap.data[j+1] // data_type
-				record.data_len   = data_len
-                
-				record.data = event_data
-                
-				curr = record
-				record = parseValue(data_type, event_data, record)
-				def decoded = record?.value
-				
-				processed += record
-				
-				//logDebug "handleBasicClusterEvent process record=${j}..${i} type=0x" + descMap.data[j] + " data_type=0x" + descMap.data[j+1] + " data_len=${data_len} decoded=${decoded} event_data=${event_data}"
-				
-				processRecord(event_type, data_type, record)
+					curr = null
+					int j = i
+					int event_type  = zigbee.convertHexToInt(descMap.data[i++])
+					int data_type	= zigbee.convertHexToInt(descMap.data[i++])
+
+					int data_len 	= getDataTypeLength(data_type)
+
+					def event_data = descMap.data[i..i+data_len-1]
+					i += data_len
+
+					Map record = [:]
+					record.first = j
+					record.last  = i
+					record.event_type = descMap.data[j]   // event_type
+					record.data_type  = descMap.data[j+1] // data_type
+					record.data_len   = data_len
+
+					record.data = event_data
+					//logDebug "handleBasicClusterEvent process record=${j}..${i} record=0x" + descMap.data[j] + " data_type=0x" + descMap.data[j+1]
+
+
+					curr = record
+					record = parseValue(data_type, event_data, record)
+					def decoded = record?.value
+
+					processed += record
+
+					//logDebug "handleBasicClusterEvent process record=${j}..${i} type=0x" + descMap.data[j] + " data_type=0x" + descMap.data[j+1] + " data_len=${data_len} decoded=${decoded} event_data=${event_data}"
+
+					processRecord(event_type, data_type, record)
+				}
 			}
-		}
-		catch (ex) {
-			logDebug "handleBasicClusterEvent FAILED: " + processed + "--- VALUES --- " + curr
-			logTrace "Exeption: $ex  " + ex.dump()
-		}
-		logDebug "handleBasicClusterEvent done: ${processed}"
+			catch (ex) {
+				logDebug "handleBasicClusterEvent FAILED: " + processed + "--- VALUES --- " + curr
+				logError "handleBasicClusterEvent: Exeption: $ex  "
+			}
+			logDebug "handleBasicClusterEvent done: ${processed}"
 		break
 		default:
-			logTrace "Uknown attribute for basic cluster: attr=${attribute}" 
+			logInfo "Uknown attribute for basic cluster: attr=${attribute}" 
 	}
 }
+
+def handleSetTemperatureEvent(int value) {
+
+	try {
+		logDebug "handleSetTemperatureEvent(): " + value
+		state.temperature = value
+		sendEvent( name: 'temperature', value: getTemperature(state.temperature), unit: getTempUnits(),   displayed: true )
+	}
+	catch (ex) {
+		logError "handleSetTemperatureEvent: Exeption: $ex  "
+	}
+}
+
+def handleSwitchClusterEvent(src, attribute, command, value) {
+
+	logDebug "handleSwitchClusterEvent(): src=${src} attribute=${attribute} value=${value} " + value.dump()
+	int endPoint = src as int
+	List result = []
+
+	switch ( attribute )
+	{
+		case 0x0000: // On/Off
+			int index = endPoint - 1
+			state.children[index] = (value == "01") ? "on" : "off"
+			executeSendEvent(findChildByEndPoint(endPoint), createEventMap("switch", state.children[index]))
+			executeSendEvent(null, createEventMap("sw${endPoint}Switch", state.children[index]))
+			executeSendEvent(null, createEventMap("switch", ((state.children[0]  == "on") || (state.children[1] == "on")) ? "on" : "off"))
+		break
+
+		case 0x4000: // GlobalSceneControl
+		break
+
+		case 0x4001: // OnTime
+		break
+
+		case 0x4002: // OffWaitTime
+		break
+	}
+//	logDebug "handleSwitchClusterEvent done: children=" + state.children.dump() + "  result: " + result.dump()
+	return result
+}
+
 
 private executeSendEvent(child, evt) {
 	
@@ -955,7 +1083,7 @@ private executeSendEvent(child, evt) {
             sendEvent(evt)
 		}		
 	}
-	logDebug "executeSendEvent(): evt=${evt}"
+	//logDebug "executeSendEvent(): evt=${evt}"
 }
 
 private createEventMap(name, value, displayed=null, unit=null) {	
@@ -986,27 +1114,11 @@ private getAttrVal(attrName, child=null) {
 		}
 	}
 	catch (ex) {
-		logTrace "$ex"
+		logError "getAttrVal: $ex"
 		return null
 	}
 }
 
-private findChildByEndPoint(endPoint) {
-	def dni = "${getChildDeviceNetworkId(endPoint)}"
-	return findChildByDeviceNetworkId(dni)
-}
-
-private findChildByDeviceNetworkId(dni) {
-	return childDevices?.find { it.deviceNetworkId == dni }
-}
-
-private getEndPoint(childDeviceNetworkId) {
-	return safeToInt("${childDeviceNetworkId}".reverse().take(1))
-}
-
-private getChildDeviceNetworkId(endPoint) {
-	return "${device.deviceNetworkId}-SW${endPoint}"
-}
 
 private safeToInt(val, defaultVal=0) {
 	return "${val}"?.isInteger() ? "${val}".toInteger() : defaultVal
@@ -1040,29 +1152,61 @@ private logDebug(msg) {
 	}
 }
 
-private logTrace (msg) {
+private logInfo (msg) {
+	log.info "$msg"
+}
+
+private logError (msg) {
 	log.error "$msg"
 }
 
+
+private updateHealthCheckInterval() {
+	logDebug "updateHealthCheckInterval().."
+
+	// Device wakes up every 5 min, this interval allows us to miss one wakeup notification before marking offline
+	def minReportingInterval = (1 * 60 * 5)
+
+	if (state.minReportingInterval != minReportingInterval) {
+		state.minReportingInterval = minReportingInterval
+		logDebug "Configured health checkInterval when updated()"
+
+		// Set the Health Check interval so that it can be skipped twice plus 2 minutes.
+		def checkInterval = ((minReportingInterval * 2) + (2 * 60))
+		sendEvent(name: "checkInterval", value: checkInterval, displayed: false, data: [protocol: "zigbee", hubHardwareId: device.hub.hardwareID])
+	}
+}
+
 private getTempUnits() {
-	def units = '°C'
+	def units = 'C'
 	if (settings?.tempUnitDisplayed != "1" ) { 
-		units = '°F'
+		units = 'F'
 	}
 	return units
 }
 private getTemperature(int v) {
-	int res = v
+	try {
+		int res = v
 
-	if (settings?.tempUnitDisplayed != "1" ) { 
-		res = v*9/5+32
+		int offset = 0
+		if ( settings?.temperatureOffset != null )
+		{
+			offset = settings?.temperatureOffset
+		}
+
+		if (settings?.tempUnitDisplayed != "1" ) { 
+			res = v*9/5+32
+		}
+		return res + offset
 	}
-	return res
+	catch (ex) {
+		logError "getTemperature: Exeption: $ex  "
+	}
 }
 
 private getInterlockState() {
 	String str = disabled
-	switch ( state.interlock ) {
+	switch ( state?.interlock ) {
 		case 0:
 			str = "disabled"
 		break
