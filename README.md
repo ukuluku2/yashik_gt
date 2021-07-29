@@ -157,3 +157,27 @@ Interlock modification completion code
 | 0x000C  | 0x0055    | Power (float 4 bytes)               |              |
 | 0x0010  | 0xFF06    | Interlock                           |              |
 | 0x0B04  | 0x0000    | Electrical Measurement - Basic info |              |
+
+
+
+## SmartHome4U Multi Smart ZIGBEE Module SH4U.101.110 (TS0601)
+
+### Specs
+
+|                       |                           |
+|-----------------------|---------------------------|
+| Input Voltage         | 240V / 50Hz               |
+| Maximum Load          | 2x600W                    |
+| Size                  | 40 x 40 x 20 mm           |
+| Connection Protocol   | |
+| Wireless Frequency    |    |
+| Weight                |                        |
+| Operating Temperature |                  |
+| Control channels      | 2 *Max load 600W per channel * |
+| Additional features   | *Requires Neutral wire*   |
+|                       | Either 2 channel Switch or Roller Shutter |
+
+
+### Compatibility
+ |  Hub                                   | Compatible                                     | Amazon Alexa | Google Assistant | Yandex Alisa |
+ |----------------------------------------|------------------------------------------------|--------------|------------------|--------------|
