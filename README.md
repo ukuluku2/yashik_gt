@@ -1,6 +1,6 @@
 # Smartthings device handlers
 
-## Aqara Two-way Zigbee Relay (LLKZMK11LM)
+## [Aqara Two-way Zigbee Relay (LLKZMK11LM)](aqara/)
 
 
 
