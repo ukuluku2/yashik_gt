@@ -2,8 +2,6 @@
 
 ## [Aqara Two-way Zigbee Relay (LLKZMK11LM)](aqara/)
 
-
-
 |   |  |  |
 |---|--|--|
 |![Aqara-LLKZMK11LM-2.png](resources/aqara/Aqara-LLKZMK11LM-2.png){width=50%} | ![Aqara-LLKZMK11LM-1.png](resources/aqara/Aqara-LLKZMK11LM-1.png){width=50%} | ![Aqara-LLKZMK11LM-3.jpg](resources/aqara/Aqara-LLKZMK11LM-3.jpg) |
@@ -181,3 +179,33 @@ Interlock modification completion code
 ### Compatibility
  |  Hub                                   | Compatible                                     | Amazon Alexa | Google Assistant | Yandex Alisa |
  |----------------------------------------|------------------------------------------------|--------------|------------------|--------------|
+
+
+## Moes ZigBee 3.0  Wall Touch Smart Light Switch
+
+
+
+|   |  |  |
+|---|--|--|
+|![moes-switches.jpg](resources/moes/moes-switches.jpg){width=50%} | ![Moes-wall-switch2](resources/moes/Moes-wall-switch2.png){width=50%} | 
+|![Moes-wall-switch-wiring.png](resources/moes/Moes-wall-switch-wiring.png) | |
+
+### Specs
+|                             |                                  |
+|-----------------------------|----------------------------------|
+| Input Voltage               | 100-250V,  50/60Hz               |
+| Maximum Load                | 10A (total)                      |
+| Inductive load(LED/CFL)     | 3-120W                           |
+| Resistive load(Incandescent)| 3-300W for 110V;3-600W for 220V  |
+| Connection Protocol         | Zigbee 3.0 / IEEE 802.15.4       |
+| Wireless Frequency          | 2.4GHz                           |
+| Operating Temperature       | 0-40 degrees C                   |
+| Additional features         | *With or without neutral wire*   |
+
+
+** Handler **
+
+|                             |                                     |
+|-----------------------------|-------------------------------------|
+|[TS0601.groovy](SmartHome4U/TS0601.groovy)             | Parent |
+|[TS0601-child.groovy](SmartHome4U/TS0601-child.groovy) | Child |
