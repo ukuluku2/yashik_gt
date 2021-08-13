@@ -1,5 +1,5 @@
 /*
- * Smartthings DH for dual relay module - child
+ * Smartthings DH for multy relay module - child
  * Product: TS0601
  *
  * Yashik, Jul-2021
@@ -16,21 +16,6 @@ metadata {
 		capability "Health Check"
 
         command    "refresh"
-	}
-
-
-	tiles(scale: 2) {
-		multiAttributeTile(name:"switch", type: "lighting", width: 6, height: 4, canChangeIcon: true){
-			tileAttribute ("device.switch", key: "PRIMARY_CONTROL") {
-				attributeState "on", label:'${name}', action:"switch.off", icon:"st.switches.light.on", backgroundColor:"#00A0DC", nextState:"turningOff"
-				attributeState "off", label:'${name}', action:"switch.on", icon:"st.switches.light.off", backgroundColor:"#ffffff", nextState:"turningOn"
-				attributeState "turningOn", label:'${name}', action:"switch.off", icon:"st.switches.light.on", backgroundColor:"#00A0DC", nextState:"turningOff"
-				attributeState "turningOff", label:'${name}', action:"switch.on", icon:"st.switches.light.off", backgroundColor:"#ffffff", nextState:"turningOn"
-			}
-			tileAttribute("device.lastCheckin", key: "SECONDARY_CONTROL") {
-				attributeState("default", label:'Last Update: ${currentValue}')
-			}
-		}
 	}
 }
 
