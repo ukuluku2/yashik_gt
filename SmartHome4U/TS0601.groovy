@@ -96,7 +96,8 @@ metadata {
 		input name: "childLock", type: "bool", title: "Child lock", description: "Prevents accidential use", defaultValue: false, required: true, displayDuringSetup:false
 		input name: "refreshActions", type: "bool", title: "Refresh info", description: "Sends queries to the device", defaultValue: false, required: false, displayDuringSetup:false
 		input name: "numOfChildren", type: "decimal", title: "Gang count", defaultValue: 2, range: "1..6", description: "Number of gangs", required: true, displayDuringSetup:false
-		input name: "backlight", type: "bool", title: "Backlight", description: "Controls Backlight", defaultValue: false, required: true, displayDuringSetup:false
+//		input name: "backlight", type: "bool", title: "Backlight", description: "Controls Backlight", defaultValue: false, required: true, displayDuringSetup:false
+		input name: "backlight", type: "enum", title: "Switch Backlight Mode", description: "Controls Backlight", options: ["OFF", "ON", "Position [Moes only]"], defaultValue: "ON", required: false, displayDuringSetup:false
 	}
 }
 
@@ -149,7 +150,13 @@ def updated() {
 
 		//  Child lock
 		def cmds = createTuyaCommand(0x65, DP_TYPE_BOOL, zigbee.convertToHexString((settings?.childLock == true ? 1 : 0),2) )
-		cmds += createTuyaCommand(0x10, DP_TYPE_BOOL, zigbee.convertToHexString((settings?.backlight == true ? 1 : 0),2) )
+
+		// Backlight
+		if ( !isMoesSwitch() ) {
+			cmds += createTuyaCommand(0x10, DP_TYPE_BOOL, zigbee.convertToHexString(getBacklightMode(),2) )
+		} else {
+			cmds += createTuyaCommand(0x0F, DP_TYPE_ENUM, zigbee.convertToHexString(getBacklightMode(),2) )
+		}
 		sendCommandsToDevice(cmds, 300)
 	}
 	catch (ex) {
@@ -524,6 +531,25 @@ private int getGangCount() {
 	return v
 }
 
+private int getBacklightMode() {
+
+	int v = 0
+	def selectedMode = settings?.backlight
+	switch (selectedMode) {
+		case "ON":
+			v = 1
+		break
+		case "Position [Moes only]":
+			if ( isMoesSwitch() ) {
+				v = 2
+			} else {
+			    v = 1
+			}
+		break
+	}
+	return v
+}
+
 private boolean isMoesSwitch() {
     return device.getDataValue("manufacturer") == "_TZE200_tz32mtza"
 }
@@ -561,7 +587,7 @@ private createTuyaCommand(int dpId, dp_type, value) {
 		return cmd
 	}
 	catch (ex) {
-		logError "createTuyaCommand: Exeption: $ex  "
+		logError "createTuyaCommand: Exeption: $ex  dp=${dpId} dp_type=${dp_type} value=${value}"
 	}
 	return ""
 }

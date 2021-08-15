@@ -181,8 +181,24 @@ Interlock modification completion code
  |----------------------------------------|------------------------------------------------|--------------|------------------|--------------|
 
 
-## Moes ZigBee 3.0  Wall Touch Smart Light Switch
+### Device handler from this repo
 
+|                                                       |           |
+|-------------------------------------------------------|-----------|
+|[TS0601.groovy](SmartHome4U/TS0601.groovy)             | Parent    |
+|[TS0601-child.groovy](SmartHome4U/TS0601-child.groovy) | Child     |
+
+** Device Handler support **
+
+1. Child lock
+2. Parent sends a single on/off command, instead of sending commands separately per channel.
+This reduces response time and load on the network
+
+
+
+
+
+## Moes ZigBee 3.0  Wall Touch Smart Light Switch
 
 
 |   |  |  |
@@ -201,11 +217,47 @@ Interlock modification completion code
 | Wireless Frequency          | 2.4GHz                           |
 | Operating Temperature       | 0-40 degrees C                   |
 | Additional features         | *With or without neutral wire*   |
+|                             | Configurable backlight: on, off, position |
 
 
-** Handler **
 
-|                             |                                     |
-|-----------------------------|-------------------------------------|
-|[TS0601.groovy](SmartHome4U/TS0601.groovy)             | Parent |
-|[TS0601-child.groovy](SmartHome4U/TS0601-child.groovy) | Child |
+### Device handler from this repo
+
+The device handler will always create main "thing".
+If more than a single channel is configured in the settings, it will create a child device for each channel.
+If only a single channel is configured, it will not create a child device, as the single channel can be completely
+controller by the main device.
+
+
+** Device Handler **
+
+|                                                       |           |
+|-------------------------------------------------------|-----------|
+|[TS0601.groovy](SmartHome4U/TS0601.groovy)             | Parent    |
+|[TS0601-child.groovy](SmartHome4U/TS0601-child.groovy) | Child     |
+
+** Device Handler support **
+
+1. Configurable number of channels (1-6)
+2. Backligh control: ON, OFF, Position
+3. Child lock was not tested for Moes devices
+
+
+### Technical info
+
+** Zigbee join **
+
+
+	zbjoin: {“dni”:“F208”,“d”:“84FD27FFFE60361F”,“capabilities”:“80”,
+		“endpoints”:[{“simple”:“01 0104 0051 01 04 0000 0004 0005 EF00 02 0019 000A”,“application”:“42”,“manufacturer”:"_TZE200_tz32mtza",“model”:“TS0601”}],
+		“parent”:0,“joinType”:1,“joinDurationMs”:2560,“joinAttempts”:1}
+
+
+** DPs **
+
+| DPID   | Description     | Type       | Values                   |
+|--------|-----------------|------------|--------------------------|
+| 1-6    | switch 1-6      | Bool (0x01)| 0-Off, 1-On              |
+| 0xD    | This device does not respond to 0xD DP | | |
+| 0xF    | Backlight       | Enum (0x04)| 0-Off, 1-Off, 2-Position |
+
