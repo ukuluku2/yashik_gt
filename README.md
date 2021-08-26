@@ -80,7 +80,7 @@ The device handler will create 3 "Things" for Aqara module
 
 ** Smartthings views **
 
-|   Main device view  | Main device view with settings         | Main device view with settings |
+|   Main device view  | Main device view with settings         | Settings screen                |
 |---------------------|----------------------------------------|--------------------------------|
 | ![Aqara-LLKZMK11LM-Smartthings-MainView.jpg](resources/aqara/Aqara-LLKZMK11LM-Smartthings-MainView.jpg){width=50%}| ![Aqara-LLKZMK11LM-Smartthings-MainView-Settings.jpg](resources/aqara/Aqara-LLKZMK11LM-Smartthings-MainView-Settings.jpg){width=50%} | ![Aqara-LLKZMK11LM-Smartthings-SettingsView.jpg](resources/aqara/Aqara-LLKZMK11LM-Smartthings-SettingsView.jpg){width=50%} | 
 
@@ -228,6 +228,11 @@ If more than a single channel is configured in the settings, it will create a ch
 If only a single channel is configured, it will not create a child device, as the single channel can be completely
 controller by the main device.
 
+Each channel is controlled individually by its child device.
+The parent controls all gangs. The parent device will be "on" if at least one child is "on".
+Turning parent "off" will turn "off" all gangs. Similary, turning the parent "on" will turn "on" all gangs.
+The number of gangs can be changed in settings of the parent device.
+The default number of gangs is 2.
 
 ** Device Handler **
 
@@ -241,6 +246,13 @@ controller by the main device.
 1. Configurable number of channels (1-6)
 2. Backligh control: ON, OFF, Position
 3. Child lock was not tested for Moes devices
+
+
+** Smartthings views **
+
+| Main device view with settings   | Settings screen                |
+|----------------------------------|--------------------------------|
+| ![TS0601-main-view.jpg](resources/moes/TS0601-main-view.jpg){height=30%}| ![TS0601-settings.jpg](resources/moes/TS0601-settings.jpg){height=30%} |
 
 
 ### Technical info
