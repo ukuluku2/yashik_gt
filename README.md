@@ -247,6 +247,18 @@ The default number of gangs is 2.
 2. Backligh control: ON, OFF, Position
 3. Child lock was not tested for Moes devices
 
+** Supported devices **
+
+The following devices were tested
+
+| Description              | Fingerprint (Manufacturer) | Comments                    |
+|--------------------------|----------------------------|-----------------------------|
+| Moes 3 gangs wall switch | _TZE200_tz32mtza           | Set gang count to 3         |
+| Moes 2 gangs wall switch | _TZE200_g1ib5ldv           |                             |
+
+Other models might work, but will not be detected.
+
+
 
 ** Smartthings views **
 
