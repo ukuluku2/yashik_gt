@@ -115,7 +115,7 @@ metadata {
  * DH API implementation
  */
 def installed() {
-	logDebug "installed()... DeviceId : ${device.id}, manufacturer: ${device.getDataValue('manufacturer')}, model: ${device.getDataValue('model')} settings=${settings}"
+	logDebug "installed()... DeviceId : ${device.id}, ${device.deviceNetworkId}  manufacturer: ${device.getDataValue('manufacturer')}, model: ${device.getDataValue('model')} settings=${settings}"
 
 	state.children = [ 0, 0, 0, 0, 0, 0 ]
 	state.info = [ : ]
@@ -310,13 +310,14 @@ def refreshAction() {
  */
 
 def childUpdated(dni) {
-	logDebug "childUpdated(${dni})"
+	logDebug "childUpdated(${dni})   for device=" + device.dump()
 
 	def child = findChildByDeviceNetworkId(dni)
 	def endPoint = getEndPoint(dni)
 	def nameAttr = "sw${endPoint}Name"
-	logDebug "${child?.displayName} vs ${device.currentValue(nameAttr)}"
+
 	if (child && ("${child?.displayName}" != "${device.currentValue(nameAttr)}") ) {
+		logDebug "childUpdated: ${child?.displayName} vs ${device.currentValue(nameAttr)}"
 		sendEvent(name: nameAttr, value: child.displayName, displayed: false)
 	}
 }
@@ -340,27 +341,35 @@ def childOnOff(String dni, boolean turnOn) {
 /*
  *  Children Helpers
  */
+private updateChildrenDNI() {
 
-private createRemoveChildDevices() {
-	logDebug "createRemoveChildDevices()... gangs=" + getGangCount() + " device=" + device.dump()
-
+	logDebug "updateChildrenDNI()... children=${childDevices.size()}"
 	try {
 		// Update DNIs if neccessary
-		for (child in childDevices) {
+		childDevices.each { child ->
 			if ( !child.deviceNetworkId.startsWith("${device.deviceNetworkId}-SW") ) {
 				try {
 					def newDNId = getChildDeviceNetworkId( getEndPoint(child.deviceNetworkId) )
-					logInfo "Updating child DNI: ${child.deviceNetworkId} -> ${newDNId}"
+					logInfo "updateChildrenDNI: ${child.deviceNetworkId} -> ${newDNId}"
 				    child.setDeviceNetworkId(newDNId)
 					child?.sendEvent(name: "deviceNetworkId", value: newDNId)
 				} catch(e) {
-					logError "createRemoveChildDevices failed to update, removing: ${child?.deviceNetworkId} ${e}"
-					deleteChildDevice( child?.deviceNetworkId )
+					logError "updateChildrenDNI failed to update child ${child.deviceNetworkId} ${child} "
 				}
 			} else {
-				logDebug "child = " + child.dump()
+				logDebug "updateChildrenDNI: child = ${child.deviceNetworkId}" + child.dump()
 			}
 		}
+	} catch(e) {
+		logError "updateChildrenDNI failed to update"
+	}
+}
+
+private createRemoveChildDevices() {
+	logDebug "createRemoveChildDevices()... gangs=" + getGangCount() + " children=${childDevices.size()} device=" + device.dump()
+
+	try {
+		updateChildrenDNI()
 
 		def count = getGangCount()
 
@@ -445,7 +454,7 @@ def createChildOnOffCommand(int endPoint, boolean turnOn) {
 }
 
 def parentOnOff(boolean turnOn) {
-	logDebug "on()..."
+	logDebug "parentOnOff()... ${turnOn}  ${device.deviceNetworkId}"
 
 	def cmds = []
 
@@ -484,6 +493,11 @@ def handleSwitchEvent(int endPoint, int value) {
 			sendEvent( name: "sw${endPoint}Switch", value: getOnOffStr(state.children[index]), displayed: true )
 
 			def child = findChildByEndPoint(endPoint)
+			if ( !child ) {
+				logDebug "handleSwitchEvent(): child for EP=${endPoint} not found, refreshing..."
+				updateChildrenDNI()
+				child = findChildByEndPoint(endPoint)
+			}
 
 			child?.sendEvent( name: 'switch', value: getOnOffStr(value), displayed: true )
 		} else if ( endPoint == 0xD ) {

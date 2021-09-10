@@ -34,7 +34,7 @@ def installed() {
 }
 
 def updated() {
-	logDebug "child updated: ${device}"
+	logDebug "child updated: " + device.dump()
 	parent.childUpdated(device.deviceNetworkId)
 }
 
